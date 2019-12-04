@@ -1,0 +1,15 @@
+To split a new dataset, download the appropriate year and annotations file:
+   
+   http://cocodataset.org/#download
+
+From the project root, make the test and training directories for the resulting split:
+   
+   mkdir -p ./data/test
+   mkdir -p ./data/train
+
+Run the script:
+
+    python3 split_coco.py --from-image-path <images_directory> --annotations <annotations_file.json> --to-train-path ./data/train/ --to-test-path ./data/test/ --split-percent .8
+
+You can adjust the split percentage. It must in the range (0, 1).
+      
