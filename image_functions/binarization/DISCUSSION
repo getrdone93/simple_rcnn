@@ -1,0 +1,18 @@
+main.py was developed on my machine. It runs on the CPU, so no special
+hardware is needed. The python3 interpreter was designed to accept main.py,
+so do not use python 2. The specific python3 interpreter is 3.6.8. The required
+libraries can all be installed via pip3. Here is the list:
+          - argparse
+          - tkinter
+          - PIL
+          - cv2
+
+This program features three representative test cases and a GUI that let's
+the user interact with the binarization function. It uses numpy to make things
+easier when manipulating images and is simple in design. It uses disk, so make
+sure the images directory is writable. 
+One problem is that the GUI is not refreshable, so the program must be 
+restarted for the new binary file to be seen in the window. Also, there
+is output in the console log for when the GUI reads the original image
+or binary image. It also lets you know where the new binarized image
+was written.

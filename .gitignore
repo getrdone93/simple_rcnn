@@ -1,0 +1,7 @@
+coco
+jpgs
+*pyc
+*png
+*jpg
+*jpeg
+test_images
