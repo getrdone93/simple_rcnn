@@ -8,6 +8,23 @@ import os
 import argparse
 import cv2
 import numpy as np
+from pycocotools.coco import COCO
+import cv2
+import os.path as path
+
+def old_detection():
+    use_cpu()
+    args = parse_args()
+    image = load_image(image_path=args.image_path, image_shape=(224, 224))
+    regions = four_crop_region(image=image)
+    crops = resize_crops(crops=regions, shape=(224, 224))
+    preds = list(map(lambda t: (simple_prediction(image=t[0]), t[1]), crops))
+    det = all_detections(image=image, crops=preds)
+
+    cv2.imwrite('detection.jpg', det)
+    cv2.imwrite('image.jpg', image)
+    
+    crops = batch_images(images=crops)
 
 def rtx_fix():
     tf.logging.set_verbosity(tf.logging.INFO)
@@ -15,12 +32,6 @@ def rtx_fix():
     config = tf.ConfigProto(gpu_options=gpu_options)
     config.gpu_options.allow_growth = True
     sess = tf.Session(config=config)
-
-def parse_args():
-    parser = argparse.ArgumentParser(description='Run detection on images')
-    parser.add_argument('--image-path', required=True, help='Path to image')
-
-    return parser.parse_args()
 
 def print_preds(preds):
     for p in preds:
@@ -109,19 +120,37 @@ def all_detections(image, crops):
                     2)
     return det_image
 
+def parse_args():
+    parser = argparse.ArgumentParser(description='Run detection on images')
+    parser.add_argument('--train-images', required=True, help='Path to training images')
+    parser.add_argument('--test-images', required=True, help='Path to testing images')
+    parser.add_argument('--annotations', required=True, help='Path to annotations file')
+
+    return parser.parse_args()
+
+IMAGE_IDS_FILE = 'image_ids.txt'
+
+def read_file(path):
+    with open(path, 'r') as f:
+        data = f.read()
+    return list(map(lambda i: int(i), data.split('\n')[:-1])) if data else None
+
+def read_images(image_path, img_id_file, coco_images):
+    ids = read_file(path=path.join(image_path, img_id_file))
+    result = {}
+    for i in ids:
+        fn = coco_images[i]['file_name']
+        result[i] = cv2.imread(path.join(image_path, fn))
+    return result    
+
 if __name__ == '__main__':
-    use_cpu()
     args = parse_args()
-    image = load_image(image_path=args.image_path, image_shape=(224, 224))
-    regions = four_crop_region(image=image)
-    crops = resize_crops(crops=regions, shape=(224, 224))
-    preds = list(map(lambda t: (simple_prediction(image=t[0]), t[1]), crops))
-    det = all_detections(image=image, crops=preds)
+    val = COCO(args.annotations)
+    imgs = read_images(image_path=args.test_images, img_id_file=IMAGE_IDS_FILE, 
+                       coco_images=val.imgs)
+    train, test = list(map(lambda p: read_images(image_path=p, img_id_file=IMAGE_IDS_FILE, 
+                                   coco_images=val.imgs), (args.train_images, args.test_images)))
 
-    cv2.imwrite('detection.jpg', det)
-    cv2.imwrite('image.jpg', image)
-    
-    crops = batch_images(images=crops)
-    
+    print('train: ', len(train))
+    print('test: ', len(test))
 
-    
