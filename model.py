@@ -62,15 +62,15 @@ def read_images(image_path, img_id_file, coco_images):
         result[i] = cv2.imread(path.join(image_path, fn))
     return result
 
-def image_to_annos(images, coco_obj, target_area):
+def image_to_bboxes(images, coco_obj, target_area):
     result, bad_ids = {}, []
     for img_id, img_data in images.items():
-        annos = list(map(lambda a: a['bbox'],
+        bboxes = list(map(lambda a: a['bbox'],
                          filter(lambda an: an['area'] < target_area,
                             map(lambda a: coco_obj.anns[a],
                                 coco_obj.getAnnIds(imgIds=[img_id])))))
-        if len(annos) == 5:
-            result[img_id] = (img_data, annos)
+        if len(bboxes) == 5:
+            result[img_id] = (img_data, bboxes)
         else:
             bad_ids.append(img_id)
         
@@ -80,24 +80,24 @@ def load_image(image_path, image_shape):
     image = img_to_array(load_img(image_path, target_size=image_shape))
     return image.reshape((image.shape[0], image.shape[1], image.shape[2]))
 
-def scale_anno(anno, orig_shape, to_shape):
+def scale_bbox(bbox, orig_shape, to_shape):
     oh, ow, _ = orig_shape
     th, tw = to_shape
     x_ratio = tw / ow
     y_ratio = th / oh
-    return [round(anno[0] * x_ratio),
-            round(anno[1] * y_ratio),
-            round(anno[2] * x_ratio),
-            round(anno[3] * y_ratio)]
+    return [round(bbox[0] * x_ratio),
+            round(bbox[1] * y_ratio),
+            round(bbox[2] * x_ratio),
+            round(bbox[3] * y_ratio)]
 
-def resize_images(image_to_annos, img_shape):
+def rescale_bboxes(image_to_bboxes, img_shape):
     resized = {}
     p = 2
-    for img_id, annos in image_to_annos.items():
-        data, anns = annos
-        rscl_anns = list(map(lambda a: scale_anno(anno=a, orig_shape=data.shape, 
-                                             to_shape=img_shape), anns))        
-        resized[img_id] = (cv2.resize(data, img_shape), rscl_anns)
+    for img_id, img_bboxes in image_to_bboxes.items():
+        data, bboxes = img_bboxes
+        rscl_bboxes = list(map(lambda a: scale_bbox(bbox=a, orig_shape=data.shape, 
+                                             to_shape=img_shape), bboxes))        
+        resized[img_id] = (cv2.resize(data, img_shape), rscl_bboxes)
     return resized
 
 def draw_detection(image, sx, sy, ex, ey, lt=2):
@@ -116,5 +116,6 @@ if __name__ == '__main__':
                        coco_images=val.imgs)
     train, test = list(map(lambda p: read_images(image_path=p, img_id_file=IMAGE_IDS_FILE, 
                                    coco_images=val.imgs), (args.train_images, args.test_images)))
-    ita, bis = image_to_annos(images=train, coco_obj=val, target_area=SMALL_OBJ)
-    resized = resize_images(image_to_annos=ita, img_shape=(224, 224))
+    itb, bis = image_to_bboxes(images=train, coco_obj=val, target_area=SMALL_OBJ)
+    rescaled = rescale_bboxes(image_to_bboxes=itb, img_shape=(224, 224))
+    see_dets(rescaled, itb)
