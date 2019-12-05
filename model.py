@@ -12,19 +12,21 @@ from pycocotools.coco import COCO
 import cv2
 import os.path as path
 
-def old_detection():
-    use_cpu()
-    args = parse_args()
-    image = load_image(image_path=args.image_path, image_shape=(224, 224))
-    regions = four_crop_region(image=image)
-    crops = resize_crops(crops=regions, shape=(224, 224))
-    preds = list(map(lambda t: (simple_prediction(image=t[0]), t[1]), crops))
-    det = all_detections(image=image, crops=preds)
+SMALL_OBJ = 32 ** 2
+IMAGE_IDS_FILE = 'image_ids.txt'
 
-    cv2.imwrite('detection.jpg', det)
-    cv2.imwrite('image.jpg', image)
-    
-    crops = batch_images(images=crops)
+def see_dets(resized, ita):
+    k = list(resized.keys())[60]
+    og_img, og_annos = ita[k]
+    ox, oy, ow, oh = map(lambda c: round(c), og_annos[0])
+    print(ox, oy, ow, oh)
+    draw_detection(image=og_img, sx=ox, sy=oy, ex=ox + ow + oh, ey=oy + ow + oh)
+    cv2.imwrite('original.jpg', og_img)
+
+    new_img, new_annos = resized[k]
+    nx, ny, nw, nh = new_annos[0]
+    draw_detection(image=new_img, sx=nx, sy=ny, ex=nx + nw + nh, ey=ny + nw + nh)
+    cv2.imwrite('new.jpg', new_img)
 
 def rtx_fix():
     tf.logging.set_verbosity(tf.logging.INFO)
@@ -33,92 +35,11 @@ def rtx_fix():
     config.gpu_options.allow_growth = True
     sess = tf.Session(config=config)
 
-def print_preds(preds):
-    for p in preds:
-        _, cl, sc = p
-        print("class: {}, score: {}".format(cl, sc))
-
-def load_image(image_path, image_shape):
-    image = img_to_array(load_img(image_path, target_size=image_shape))
-    return image.reshape((image.shape[0], image.shape[1], image.shape[2]))
-
-def four_crop_region(image):
-    dim = image.shape[1]
-    
-    return ((image[0:dim//2, 0:dim//2], ((0, 0), (dim//2, dim//2))),
-            (image[0:dim//2, dim//2:dim], ((0, dim//2), (dim//2, dim))),
-            (image[dim//2:dim, 0:dim//2], ((dim//2, 0), (dim, dim//2))),
-            (image[dim//2:dim, dim//2:dim], ((dim//2, dim//2), (dim, dim))))
-
-def draw_detection(image, sx, sy, ex, ey):
-    width = ex - sx
-    height = ey - sy
-    line_thick = 3
-    color = (0, 0, 255)
-    cv2.line(image, (sx, sy), (sx + width, sy), color, line_thick)
-    cv2.line(image, (sx, sy), (sx, sy + height), color, line_thick)
-    cv2.line(image, (sx + width, sy), (sx + width, sy + height), color, line_thick)
-    cv2.line(image, (sx, sy + height), (sx + width, sy + height), color, line_thick)
-
-def grab_regions(regions):
-    return list(map(lambda r: r[0], regions))
-
-def resize_crops(crops, shape):
-    return list(map(lambda t: (cv2.resize(t[0], shape), t[1]), crops))
-
-def batch_images(images):
-    return list(map(lambda i: np.expand_dims(i, axis=0), images))
-
-def simple_prediction(image):
-    model = VGG16()
-    image = np.expand_dims(image, axis=0)
-    prep_image = preprocess_input(image)
-    preds = decode_predictions(model.predict(prep_image), top=10)
-    preds = preds[0] if len(preds) == 1 else preds
-
-    return preds
-
-def output_predictions(crops):
-    for e in zip(crops, range(len(crops))):
-        c, i = e
-        preds = simple_prediction(image=c)
-        fn = 'image_' + str(i) + '.jpg'
-        print("crop: {}, shape: {}, \npreds:".format(fn, c.shape))
-        print_preds(preds=preds)
-
 def use_cpu(use_cpu=True):
     if use_cpu:
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
     else:
         rtx_fix()
-
-def all_detections(image, crops):
-    det_image = np.copy(image)
-    for r in preds:
-        p, coord = r
-        s, e = coord
-        sx, sy = s
-        ex, ey = e
-        _, hi_cls, score = p[0]
-        score = str(round(score * 100, 2)) + '%'
-        xshift = 5
-        yshift = 13
-        draw_detection(image=det_image, sx=sx, sy=sy, ex=ex, ey=ey)
-        cv2.putText(det_image,
-                    hi_cls,
-                    (sx + xshift, sy + ((ey - sy) // 2)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.4,
-                    (0, 0, 0),
-                    2)
-        cv2.putText(det_image,
-                    score,
-                    (sx + xshift, sy + ((ey - sy) // 2) + yshift),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.4,
-                    (0, 0, 0),
-                    2)
-    return det_image
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run detection on images')
@@ -127,8 +48,6 @@ def parse_args():
     parser.add_argument('--annotations', required=True, help='Path to annotations file')
 
     return parser.parse_args()
-
-IMAGE_IDS_FILE = 'image_ids.txt'
 
 def read_file(path):
     with open(path, 'r') as f:
@@ -141,7 +60,54 @@ def read_images(image_path, img_id_file, coco_images):
     for i in ids:
         fn = coco_images[i]['file_name']
         result[i] = cv2.imread(path.join(image_path, fn))
-    return result    
+    return result
+
+def image_to_annos(images, coco_obj, target_area):
+    result, bad_ids = {}, []
+    for img_id, img_data in images.items():
+        annos = list(map(lambda a: a['bbox'],
+                         filter(lambda an: an['area'] < target_area,
+                            map(lambda a: coco_obj.anns[a],
+                                coco_obj.getAnnIds(imgIds=[img_id])))))
+        if len(annos) == 5:
+            result[img_id] = (img_data, annos)
+        else:
+            bad_ids.append(img_id)
+        
+    return result, bad_ids
+
+def load_image(image_path, image_shape):
+    image = img_to_array(load_img(image_path, target_size=image_shape))
+    return image.reshape((image.shape[0], image.shape[1], image.shape[2]))
+
+def scale_anno(anno, orig_shape, to_shape):
+    oh, ow, _ = orig_shape
+    th, tw = to_shape
+    x_ratio = tw / ow
+    y_ratio = th / oh
+    return [round(anno[0] * x_ratio),
+            round(anno[1] * y_ratio),
+            round(anno[2] * x_ratio),
+            round(anno[3] * y_ratio)]
+
+def resize_images(image_to_annos, img_shape):
+    resized = {}
+    p = 2
+    for img_id, annos in image_to_annos.items():
+        data, anns = annos
+        rscl_anns = list(map(lambda a: scale_anno(anno=a, orig_shape=data.shape, 
+                                             to_shape=img_shape), anns))        
+        resized[img_id] = (cv2.resize(data, img_shape), rscl_anns)
+    return resized
+
+def draw_detection(image, sx, sy, ex, ey, lt=2):
+    width = ex - sx
+    height = ey - sy
+    color = (0, 0, 255)
+    cv2.line(image, (sx, sy), (sx + width, sy), color, lt)
+    cv2.line(image, (sx, sy), (sx, sy + height), color, lt)
+    cv2.line(image, (sx + width, sy), (sx + width, sy + height), color, lt)
+    cv2.line(image, (sx, sy + height), (sx + width, sy + height), color, lt)
 
 if __name__ == '__main__':
     args = parse_args()
@@ -150,7 +116,5 @@ if __name__ == '__main__':
                        coco_images=val.imgs)
     train, test = list(map(lambda p: read_images(image_path=p, img_id_file=IMAGE_IDS_FILE, 
                                    coco_images=val.imgs), (args.train_images, args.test_images)))
-
-    print('train: ', len(train))
-    print('test: ', len(test))
-
+    ita, bis = image_to_annos(images=train, coco_obj=val, target_area=SMALL_OBJ)
+    resized = resize_images(image_to_annos=ita, img_shape=(224, 224))
