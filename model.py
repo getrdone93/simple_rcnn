@@ -28,6 +28,15 @@ def see_dets(resized, ita):
     draw_detection(image=new_img, sx=nx, sy=ny, ex=nx + nw + nh, ey=ny + nw + nh)
     cv2.imwrite('new.jpg', new_img)
 
+def draw_detection(image, sx, sy, ex, ey, lt=2):
+    width = ex - sx
+    height = ey - sy
+    color = (0, 0, 255)
+    cv2.line(image, (sx, sy), (sx + width, sy), color, lt)
+    cv2.line(image, (sx, sy), (sx, sy + height), color, lt)
+    cv2.line(image, (sx + width, sy), (sx + width, sy + height), color, lt)
+    cv2.line(image, (sx, sy + height), (sx + width, sy + height), color, lt)
+
 def rtx_fix():
     tf.logging.set_verbosity(tf.logging.INFO)
     gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.80)
@@ -100,14 +109,9 @@ def rescale_bboxes(image_to_bboxes, img_shape):
         resized[img_id] = (cv2.resize(data, img_shape), rscl_bboxes)
     return resized
 
-def draw_detection(image, sx, sy, ex, ey, lt=2):
-    width = ex - sx
-    height = ey - sy
-    color = (0, 0, 255)
-    cv2.line(image, (sx, sy), (sx + width, sy), color, lt)
-    cv2.line(image, (sx, sy), (sx, sy + height), color, lt)
-    cv2.line(image, (sx + width, sy), (sx + width, sy + height), color, lt)
-    cv2.line(image, (sx, sy + height), (sx + width, sy + height), color, lt)
+def example_tensors(image_bboxes):
+    xs, ys = zip(*[(data[0], data[1]) for img_id, data in image_bboxes.items()])
+    return np.array(xs), np.array(ys)
 
 if __name__ == '__main__':
     args = parse_args()
@@ -118,4 +122,6 @@ if __name__ == '__main__':
                                    coco_images=val.imgs), (args.train_images, args.test_images)))
     itb, bis = image_to_bboxes(images=train, coco_obj=val, target_area=SMALL_OBJ)
     rescaled = rescale_bboxes(image_to_bboxes=itb, img_shape=(224, 224))
-    see_dets(rescaled, itb)
+    xs, ys = example_tensors(image_bboxes=rescaled)
+    
+    print("xs.shape: {}, ys.shape: {}".format(xs.shape, ys.shape))
