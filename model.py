@@ -45,7 +45,7 @@ def rtx_fix():
     config.gpu_options.allow_growth = True
     sess = tf.Session(config=config)
 
-def use_cpu(use_cpu=True):
+def hardware_setup(use_cpu):
     if use_cpu:
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
     else:
@@ -112,7 +112,7 @@ def rescale_bboxes(image_to_bboxes, img_shape):
 
 def example_tensors(image_bboxes):
     xs, ys = zip(*[(data[0], data[1]) for img_id, data in image_bboxes.items()])
-    return np.array(xs), np.array(ys).reshape((-1, 20))
+    return np.array(xs), tf.keras.utils.normalize(np.array(ys).reshape((-1, 20)))
 
 def conv_net(in_shape):
     w, h = in_shape
@@ -139,14 +139,19 @@ def train_net(train, test, img_shape, batch_size):
     test_itr = datagen.flow(tst_xs, tst_ys, batch_size=batch_size)
     model = conv_net(in_shape=img_shape)
 
+    # bx, by = train_itr.next()
+    # print("test x: {}, test y: {}, min x: {}, max x: {}, min y: {}, max y: {}"\
+    #       .format(bx.shape, by.shape, bx.min(), bx.max(), by.min(), by.max()))
+    # exit()
+
     model.compile(optimizer='adam', loss='mean_squared_error', metrics=['accuracy'])
-    model.fit_generator(train_itr, steps_per_epoch=len(train_itr), epochs=5)
+    model.fit_generator(train_itr, steps_per_epoch=len(train_itr), epochs=20)
     _, acc = model.evaluate_generator(test_itr, steps=len(test_itr), verbose=0)
 
     print('Test Accuracy: %.3f' % (acc * 100))
 
 if __name__ == '__main__':
-    use_cpu()
+    hardware_setup(use_cpu=False)
     img_shape = (224, 224)
     args = parse_args()
     val = COCO(args.annotations)
