@@ -179,7 +179,7 @@ def save_model(model, fp, epochs):
 
 def train_runtime(annotations, train_images_path, test_images_path, img_shape,
                   epochs):
-    val = COCO(args.annotations)
+    val = COCO(annotations)
     train, test = list(map(lambda p: read_images(image_path=p, img_id_file=IMAGE_IDS_FILE, 
                                    coco_images=val.imgs), (train_images_path, test_images_path)))
     tr_tensors, tst_tensors = map(lambda ds: tensors_from_images(images=ds, coco_obj=val),
