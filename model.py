@@ -12,9 +12,11 @@ from keras.layers import Conv2D
 from keras.layers import MaxPooling2D
 from keras.layers import Flatten
 from keras.layers import Dense
+from datetime import datetime
 
 SMALL_OBJ = 32 ** 2
 IMAGE_IDS_FILE = 'image_ids.txt'
+TRAINED_PATH = './trained'
 
 def see_dets(resized, ita):
     k = list(resized.keys())[60]
@@ -45,18 +47,19 @@ def rtx_fix():
     config.gpu_options.allow_growth = True
     sess = tf.Session(config=config)
 
-def hardware_setup(use_cpu):
-    if use_cpu:
-        os.environ["CUDA_VISIBLE_DEVICES"] = ""
-    else:
+def hardware_setup(use_gpu):
+    if use_gpu:
         rtx_fix()
+    else:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run detection on images')
-    parser.add_argument('--train-images', required=True, help='Path to training images')
-    parser.add_argument('--test-images', required=True, help='Path to testing images')
+    parser.add_argument('--train-images-path', required=True, help='Path to training images')
+    parser.add_argument('--test-images-path', required=True, help='Path to testing images')
     parser.add_argument('--annotations', required=True, help='Path to annotations file')
-
+    parser.add_argument('--epochs', required=False, default=20, type=int)
+    parser.add_argument('--use-gpu', required=False, default=False, action='store_true')
     return parser.parse_args()
 
 def read_file(path):
@@ -112,56 +115,89 @@ def rescale_bboxes(image_to_bboxes, img_shape):
 
 def example_tensors(image_bboxes):
     xs, ys = zip(*[(data[0], data[1]) for img_id, data in image_bboxes.items()])
-    return np.array(xs), tf.keras.utils.normalize(np.array(ys).reshape((-1, 20)))
+    return np.array(xs), np.array(ys).reshape((-1, 20))
 
-def conv_net(in_shape):
+def create_model(in_shape):
     w, h = in_shape
-    net = Sequential()
-    net.add(Conv2D(32, (3, 3), activation='relu', input_shape=(w, h, 3)))
-    net.add(MaxPooling2D((2, 2)))
-    net.add(Conv2D(64, (3, 3), activation='relu'))
-    net.add(MaxPooling2D((2, 2)))
-    net.add(Flatten())
-    net.add(Dense(20, activation='softmax'))
-    return net
+    model = Sequential()
+    model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(w, h, 3)))
+    model.add(MaxPooling2D((2, 2)))
+    model.add(Conv2D(64, (3, 3), activation='relu'))
+    model.add(MaxPooling2D((2, 2)))
+    model.add(Flatten())
+    model.add(Dense(20, activation='softmax'))
+    return model
+
+def normalize_bbox(im_w, im_h, bbox):
+    x, y, w, h = bbox
+    return [x/im_w, y/im_h, w/im_w, h/im_h]
+
+def normalize_bboxes(image_to_bboxes, im_w, im_h):
+    normalized = {}
+    for img_id, img_bboxes in image_to_bboxes.items():
+        img_data, bboxes = img_bboxes
+        norm_bboxes = list(map(lambda b: normalize_bbox(im_w=im_w, im_h=im_h, bbox=b),
+                               bboxes))
+        normalized[img_id] = (img_data, norm_bboxes)
+    return normalized
 
 def tensors_from_images(images, coco_obj):
     itb, bis = image_to_bboxes(images=images, coco_obj=coco_obj, target_area=SMALL_OBJ)
     rescaled = rescale_bboxes(image_to_bboxes=itb, img_shape=(224, 224))
-    return example_tensors(image_bboxes=rescaled)
+    normalized = normalize_bboxes(image_to_bboxes=rescaled, im_w=224, im_h=224)
+    return example_tensors(image_bboxes=normalized)
 
-def train_net(train, test, img_shape, batch_size):
+def train_model(train, test, img_shape, batch_size, epochs):
     tr_xs, tr_ys = train
     tst_xs, tst_ys = test
 
-    datagen = ImageDataGenerator(rescale=1.0/255.0)
+    datagen = ImageDataGenerator(rescale=1.0/255.0, horizontal_flip=True)
     train_itr = datagen.flow(tr_xs, tr_ys, batch_size=batch_size)
     test_itr = datagen.flow(tst_xs, tst_ys, batch_size=batch_size)
-    model = conv_net(in_shape=img_shape)
 
-    # bx, by = train_itr.next()
-    # print("test x: {}, test y: {}, min x: {}, max x: {}, min y: {}, max y: {}"\
-    #       .format(bx.shape, by.shape, bx.min(), bx.max(), by.min(), by.max()))
+    tr_bx, tr_by = train_itr.next()
+    tst_bx, tst_by = test_itr.next()
+
+    # print("train, min x: {}, max x: {}, min y: {}, max y: {}"\
+    #       .format(tr_bx.min(), tr_bx.max(), tr_by.min(), tr_by.max()))
+    # print("test, min x: {}, max x: {}, min y: {}, max y: {}"\
+    #       .format(tst_bx.min(), tst_bx.max(), tst_by.min(), tst_by.max()))
     # exit()
 
+    model = create_model(in_shape=img_shape)
+
     model.compile(optimizer='adam', loss='mean_squared_error', metrics=['accuracy'])
-    model.fit_generator(train_itr, steps_per_epoch=len(train_itr), epochs=20)
+    model.fit_generator(train_itr, steps_per_epoch=len(train_itr), epochs=epochs)
     _, acc = model.evaluate_generator(test_itr, steps=len(test_itr), verbose=0)
 
-    print('Test Accuracy: %.3f' % (acc * 100))
+    return model, acc
 
-if __name__ == '__main__':
-    hardware_setup(use_cpu=False)
-    img_shape = (224, 224)
-    args = parse_args()
+def save_model(model, fp, epochs):
+    sp = path.join(fp, str(epochs) + '_' + datetime.now().strftime("%d-%m-%y_%H:%M:%S") + '.h5')
+    print("Saving model to {}".format(sp))
+    model.save_weights(sp)
+
+def train_runtime(annotations, train_images_path, test_images_path, img_shape,
+                  epochs):
     val = COCO(args.annotations)
     train, test = list(map(lambda p: read_images(image_path=p, img_id_file=IMAGE_IDS_FILE, 
-                                   coco_images=val.imgs), (args.train_images, args.test_images)))
+                                   coco_images=val.imgs), (train_images_path, test_images_path)))
     tr_tensors, tst_tensors = map(lambda ds: tensors_from_images(images=ds, coco_obj=val),
                                   (train, test))
 
     print("train_xs: {}, train_ys: {}".format(tr_tensors[0].shape, tr_tensors[1].shape))
     print("test_xs: {}, test_ys: {}".format(tst_tensors[0].shape, tst_tensors[1].shape))
-    train_net(train=tr_tensors, test=tst_tensors, batch_size=8, img_shape=img_shape)
+    model, acc = train_model(train=tr_tensors, test=tst_tensors, batch_size=8,
+                             img_shape=img_shape, epochs=epochs)
+    print('Test Accuracy: %.3f' % (acc * 100))
+    save_model(model=model, fp=TRAINED_PATH, epochs=epochs)
+
+    return model
+
+if __name__ == '__main__':
+    args = parse_args()
+    hardware_setup(use_gpu=args.use_gpu)
+    train_runtime(annotations=args.annotations, train_images_path=args.train_images_path,
+                  test_images_path=args.test_images_path, img_shape=(224, 224), epochs=args.epochs)
 
     
