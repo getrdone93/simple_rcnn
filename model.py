@@ -1,8 +1,3 @@
-from keras.applications.vgg16 import VGG16
-from keras.applications.vgg16 import decode_predictions
-from keras.applications.vgg16 import preprocess_input
-from keras.preprocessing.image import load_img
-from keras.preprocessing.image import img_to_array
 import tensorflow as tf
 import os
 import argparse
@@ -11,6 +6,12 @@ import numpy as np
 from pycocotools.coco import COCO
 import cv2
 import os.path as path
+from keras.preprocessing.image import ImageDataGenerator
+from keras.models import Sequential
+from keras.layers import Conv2D
+from keras.layers import MaxPooling2D
+from keras.layers import Flatten
+from keras.layers import Dense
 
 SMALL_OBJ = 32 ** 2
 IMAGE_IDS_FILE = 'image_ids.txt'
@@ -111,17 +112,51 @@ def rescale_bboxes(image_to_bboxes, img_shape):
 
 def example_tensors(image_bboxes):
     xs, ys = zip(*[(data[0], data[1]) for img_id, data in image_bboxes.items()])
-    return np.array(xs), np.array(ys)
+    return np.array(xs), np.array(ys).reshape((-1, 20))
+
+def conv_net(in_shape):
+    w, h = in_shape
+    net = Sequential()
+    net.add(Conv2D(32, (3, 3), activation='relu', input_shape=(w, h, 3)))
+    net.add(MaxPooling2D((2, 2)))
+    net.add(Conv2D(64, (3, 3), activation='relu'))
+    net.add(MaxPooling2D((2, 2)))
+    net.add(Flatten())
+    net.add(Dense(20, activation='softmax'))
+    return net
+
+def tensors_from_images(images, coco_obj):
+    itb, bis = image_to_bboxes(images=images, coco_obj=coco_obj, target_area=SMALL_OBJ)
+    rescaled = rescale_bboxes(image_to_bboxes=itb, img_shape=(224, 224))
+    return example_tensors(image_bboxes=rescaled)
+
+def train_net(train, test, img_shape, batch_size):
+    tr_xs, tr_ys = train
+    tst_xs, tst_ys = test
+
+    datagen = ImageDataGenerator(rescale=1.0/255.0)
+    train_itr = datagen.flow(tr_xs, tr_ys, batch_size=batch_size)
+    test_itr = datagen.flow(tst_xs, tst_ys, batch_size=batch_size)
+    model = conv_net(in_shape=img_shape)
+
+    model.compile(optimizer='adam', loss='mean_squared_error', metrics=['accuracy'])
+    model.fit_generator(train_itr, steps_per_epoch=len(train_itr), epochs=5)
+    _, acc = model.evaluate_generator(test_itr, steps=len(test_itr), verbose=0)
+
+    print('Test Accuracy: %.3f' % (acc * 100))
 
 if __name__ == '__main__':
+    use_cpu()
+    img_shape = (224, 224)
     args = parse_args()
     val = COCO(args.annotations)
-    imgs = read_images(image_path=args.test_images, img_id_file=IMAGE_IDS_FILE, 
-                       coco_images=val.imgs)
     train, test = list(map(lambda p: read_images(image_path=p, img_id_file=IMAGE_IDS_FILE, 
                                    coco_images=val.imgs), (args.train_images, args.test_images)))
-    itb, bis = image_to_bboxes(images=train, coco_obj=val, target_area=SMALL_OBJ)
-    rescaled = rescale_bboxes(image_to_bboxes=itb, img_shape=(224, 224))
-    xs, ys = example_tensors(image_bboxes=rescaled)
+    tr_tensors, tst_tensors = map(lambda ds: tensors_from_images(images=ds, coco_obj=val),
+                                  (train, test))
+
+    print("train_xs: {}, train_ys: {}".format(tr_tensors[0].shape, tr_tensors[1].shape))
+    print("test_xs: {}, test_ys: {}".format(tst_tensors[0].shape, tst_tensors[1].shape))
+    train_net(train=tr_tensors, test=tst_tensors, batch_size=8, img_shape=img_shape)
+
     
-    print("xs.shape: {}, ys.shape: {}".format(xs.shape, ys.shape))
