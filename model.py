@@ -114,16 +114,45 @@ def example_tensors(image_bboxes):
     xs, ys = zip(*[(data[0], data[1]) for img_id, data in image_bboxes])
     return np.array(xs), np.array(ys).reshape((-1, 20))
 
-def create_model(in_shape):
+#Dont delete, best model
+# def custom_model(in_shape):
+#     w, h = in_shape
+#     model = Sequential()
+#     model.add(Conv2D(64, (3, 3), activation='relu', input_shape=(w, h, 3)))
+#     model.add(MaxPooling2D((2, 2)))
+
+#     model.add(Conv2D(128, (3, 3), activation='relu', input_shape=(w, h, 3)))
+#     model.add(MaxPooling2D((2, 2)))
+
+#     model.add(Conv2D(128, (3, 3), activation='relu'))
+#     model.add(MaxPooling2D((2, 2)))
+
+#     model.add(Conv2D(256, (3, 3), activation='relu'))
+#     model.add(MaxPooling2D((2, 2)))
+
+#     model.add(Conv2D(512, (3, 3), activation='relu'))
+#     model.add(MaxPooling2D((2, 2)))
+
+#     model.add(Flatten())
+#     model.add(Dense(20, activation='softmax'))
+#     return model
+
+def custom_model(in_shape):
     w, h = in_shape
     model = Sequential()
-    model.add(Conv2D(32, (5, 5), activation='relu', input_shape=(w, h, 3)))
+    model.add(Conv2D(64, (3, 3), activation='relu', input_shape=(w, h, 3)))
     model.add(MaxPooling2D((2, 2)))
 
-    model.add(Conv2D(64, (5, 5), activation='relu', input_shape=(w, h, 3)))
+    model.add(Conv2D(128, (3, 3), activation='relu', input_shape=(w, h, 3)))
     model.add(MaxPooling2D((2, 2)))
 
     model.add(Conv2D(128, (3, 3), activation='relu'))
+    model.add(MaxPooling2D((2, 2)))
+
+    model.add(Conv2D(256, (3, 3), activation='relu'))
+    model.add(MaxPooling2D((2, 2)))
+
+    model.add(Conv2D(512, (3, 3), activation='relu'))
     model.add(MaxPooling2D((2, 2)))
 
     model.add(Flatten())
@@ -149,34 +178,36 @@ def tensors_from_images(images, coco_obj):
     normalized = normalize_bboxes(image_to_bboxes=rescaled, im_w=224, im_h=224)
     return example_tensors(image_bboxes=normalized)
 
-def l2_loss(yTrue, yPred):
-    return kb.cast(kb.pow(1, 1), 'int32')
-    #return kb.sum(kb.pow(yTrue - yPred, 2)) / kb.count_params(yTrue)
+def avg_coordinate_distance(y_true, y_pred):
+    return kb.mean(kb.sum(kb.abs(y_true[0:2] - y_pred[0:2])))
+
+def avg_w_h_distance(y_true, y_pred):
+    return kb.mean(kb.sum(kb.abs(y_true[2:4] - y_pred[2:4])))
 
 def train_model(train, test, img_shape, batch_size, epochs):
     tr_xs, tr_ys = train
     tst_xs, tst_ys = test
 
-    datagen = ImageDataGenerator(rescale=1.0/255.0, horizontal_flip=True)
+    datagen = ImageDataGenerator(rescale=1.0/255.0)
     train_itr = datagen.flow(tr_xs, tr_ys, batch_size=batch_size)
     test_itr = datagen.flow(tst_xs, tst_ys, batch_size=batch_size)
 
     tr_bx, tr_by = train_itr.next()
     tst_bx, tst_by = test_itr.next()
 
-    # print("train, min x: {}, max x: {}, min y: {}, max y: {}"\
-    #       .format(tr_bx.min(), tr_bx.max(), tr_by.min(), tr_by.max()))
-    # print("test, min x: {}, max x: {}, min y: {}, max y: {}"\
-    #       .format(tst_bx.min(), tst_bx.max(), tst_by.min(), tst_by.max()))
-    # exit()
+    model = custom_model(in_shape=img_shape)
+    print(model.summary())
+    print("Do you want this model? ")
+    inp = input()
+    if inp == 'n':
+        exit()
 
-    model = create_model(in_shape=img_shape)
-
-    model.compile(optimizer='adam', loss=l2_loss, metrics=['accuracy'])
+    model.compile(optimizer='adam', loss='mean_absolute_error', metrics=[avg_coordinate_distance, 
+                                                                         avg_w_h_distance])
     model.fit_generator(train_itr, steps_per_epoch=len(train_itr), epochs=epochs)
-    _, acc = model.evaluate_generator(test_itr, steps=len(test_itr), verbose=0)
+    model.evaluate_generator(test_itr, steps=len(test_itr), verbose=0)
 
-    return model, acc
+    return model
 
 def save_model(model, fp, epochs):
     sp = path.join(fp, str(epochs) + '_' + datetime.now().strftime("%d-%m-%y_%Hh-%Mm-%Ss") + '.h5')
@@ -191,11 +222,17 @@ def train_runtime(annotations, train_images_path, test_images_path, img_shape,
     tr_tensors, tst_tensors = map(lambda ds: tensors_from_images(images=ds, coco_obj=val),
                                   (train, test))
 
-    print("train_xs: {}, train_ys: {}".format(tr_tensors[0].shape, tr_tensors[1].shape))
-    print("test_xs: {}, test_ys: {}".format(tst_tensors[0].shape, tst_tensors[1].shape))
-    model, acc = train_model(train=tr_tensors, test=tst_tensors, batch_size=8,
+    print("train_xs: {}, train_ys: {}, xs_min: {}, xs_max: {}, ys_min: {}, ys_max: {}"\
+          .format(tr_tensors[0].shape, tr_tensors[1].shape,
+                  tr_tensors[0].min(), tr_tensors[0].max(),
+                  tr_tensors[1].min(), tr_tensors[1].max()))
+    print("test_xs: {}, test_ys: {}, xs_min: {}, xs_max: {}, ys_min: {}, ys_max: {}"\
+          .format(tst_tensors[0].shape, tst_tensors[1].shape, 
+                  tst_tensors[0].min(), tst_tensors[0].max(),
+                  tst_tensors[1].min(), tst_tensors[1].max()))
+    model = train_model(train=tr_tensors, test=tst_tensors, batch_size=8,
                              img_shape=img_shape, epochs=epochs)
-    print('Test Accuracy: %.3f' % (acc * 100))
+
     save_model(model=model, fp=TRAINED_PATH, epochs=epochs)
 
     return model
@@ -210,7 +247,7 @@ def original_and_tensors(annotations, images_path, img_id_file, img_shape):
     return itb, (xs, ys)
 
 def model_from_disk(model_path, img_shape):
-    model = create_model(img_shape)
+    model = custom_model(img_shape)
     model.load_weights(model_path)
 
     return model
