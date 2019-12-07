@@ -23,18 +23,18 @@ SMALL_OBJ = 32 ** 2
 IMAGE_IDS_FILE = 'image_ids.txt'
 TRAINED_PATH = './trained'
 
-def see_dets(resized, ita):
-    k = list(resized.keys())[60]
-    og_img, og_annos = ita[k]
-    ox, oy, ow, oh = map(lambda c: round(c), og_annos[0])
-    print(ox, oy, ow, oh)
-    draw_detection(image=og_img, sx=ox, sy=oy, ex=ox + ow + oh, ey=oy + ow + oh)
-    cv2.imwrite('original.jpg', og_img)
+def parse_args():
+    parser = argparse.ArgumentParser(description='Run detection on images')
+    parser.add_argument('--train-images-path', required=False, help='Path to training images')
+    parser.add_argument('--test-images-path', required=True, help='Path to testing images')
+    parser.add_argument('--annotations', required=True, help='Path to annotations file')
+    parser.add_argument('--epochs', required=False, default=20, type=int)
+    parser.add_argument('--use-gpu', required=False, default=False, action='store_true')
+    parser.add_argument('--train', required=False, default=False, action='store_true')
+    parser.add_argument('--predict', required=False, default=False, action='store_true')
+    parser.add_argument('--pretrained-model', required=False, type=str)
 
-    new_img, new_annos = resized[k]
-    nx, ny, nw, nh = new_annos[0]
-    draw_detection(image=new_img, sx=nx, sy=ny, ex=nx + nw + nh, ey=ny + nw + nh)
-    cv2.imwrite('new.jpg', new_img)
+    return parser.parse_args()
 
 def rtx_fix():
     tf.logging.set_verbosity(tf.logging.INFO)
@@ -48,19 +48,6 @@ def hardware_setup(use_gpu):
         rtx_fix()
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
-
-def parse_args():
-    parser = argparse.ArgumentParser(description='Run detection on images')
-    parser.add_argument('--train-images-path', required=False, help='Path to training images')
-    parser.add_argument('--test-images-path', required=True, help='Path to testing images')
-    parser.add_argument('--annotations', required=True, help='Path to annotations file')
-    parser.add_argument('--epochs', required=False, default=20, type=int)
-    parser.add_argument('--use-gpu', required=False, default=False, action='store_true')
-    parser.add_argument('--train', required=False, default=False, action='store_true')
-    parser.add_argument('--predict', required=False, default=False, action='store_true')
-    parser.add_argument('--pretrained-model', required=False, type=str)
-
-    return parser.parse_args()
 
 def read_file(path):
     with open(path, 'r') as f:
@@ -89,10 +76,6 @@ def image_to_bboxes(images, coco_obj, target_area):
         
     return list(result.items()), bad_ids
 
-def load_image(image_path, image_shape):
-    image = img_to_array(load_img(image_path, target_size=image_shape))
-    return image.reshape((image.shape[0], image.shape[1], image.shape[2]))
-
 def scale_bbox(bbox, orig_shape, to_shape):
     oh, ow, _ = orig_shape
     th, tw = to_shape
@@ -116,29 +99,6 @@ def rescale_bboxes(image_to_bboxes, img_shape):
 def example_tensors(image_bboxes):
     xs, ys = zip(*[(data[0], data[1]) for img_id, data in image_bboxes])
     return np.array(xs), np.array(ys).reshape((-1, 20))
-
-#Dont delete, best model
-# def custom_model(in_shape):
-#     w, h = in_shape
-#     model = Sequential()
-#     model.add(Conv2D(64, (3, 3), activation='relu', input_shape=(w, h, 3)))
-#     model.add(MaxPooling2D((2, 2)))
-
-#     model.add(Conv2D(128, (3, 3), activation='relu', input_shape=(w, h, 3)))
-#     model.add(MaxPooling2D((2, 2)))
-
-#     model.add(Conv2D(128, (3, 3), activation='relu'))
-#     model.add(MaxPooling2D((2, 2)))
-
-#     model.add(Conv2D(256, (3, 3), activation='relu'))
-#     model.add(MaxPooling2D((2, 2)))
-
-#     model.add(Conv2D(512, (3, 3), activation='relu'))
-#     model.add(MaxPooling2D((2, 2)))
-
-#     model.add(Flatten())
-#     model.add(Dense(20, activation='softmax'))
-#     return model
 
 #top left small dets model
 def custom_model(in_shape):
@@ -254,7 +214,7 @@ def original_and_tensors(annotations, images_path, img_id_file, img_shape):
     itb, _ = image_to_bboxes(images=images, coco_obj=val, target_area=SMALL_OBJ)
     xs, ys = tensors_from_images(images=images, coco_obj=val)
 
-    return itb, (xs, ys)
+    return itb, (xs, ys), val
 
 def model_from_disk(model_path, img_shape):
     model = custom_model(img_shape)
@@ -311,12 +271,28 @@ def compare_dets(model, images, tensors):
         input()
 
 def prediction_runtime(annotations, images_path, img_id_file, img_shape, model_path):
-    images, tensors = original_and_tensors(annotations=annotations, images_path=images_path, 
+    images, tensors, coco_obj = original_and_tensors(annotations=annotations, images_path=images_path, 
                                              img_id_file=img_id_file, img_shape=img_shape)
     model = model_from_disk(model_path=model_path, img_shape=img_shape)
     compare_dets(model=model, images=images, tensors=tensors)
 
+def denormalize(w, h, preds):
+    result = np.copy(preds)
+    result[:, :, 0:4:2] *= w
+    result[:, :, 1:4:2] *= h
+    return result
+
+def predict(model, tensors):
+    xs, ys = tensors
+    preds = model.predict(xs)
+    preds = preds.reshape((-1, 5, 4))
+    ys = ys.reshape((-1, 5, 4))
+    num_dets, w, h, _ = xs.shape
+    preds = denormalize(w=w, h=h, preds=preds)
+    ys = denormalize(w=w, h=h, preds=ys)
     
+    return xs, preds, ys
+
 if __name__ == '__main__':
     args = parse_args()
     hardware_setup(use_gpu=args.use_gpu)
