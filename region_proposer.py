@@ -251,7 +251,7 @@ def compare_dets(model, images, tensors):
             break
 
     for og_img, i in zip(images, range(len(images))):
-        _, img_bboxes = og_img
+        img_id, img_bboxes = og_img
         oi, bboxes = img_bboxes
         det_img = np.copy(oi)
         for bbox in bboxes:
@@ -267,7 +267,7 @@ def compare_dets(model, images, tensors):
             print((px, py, pw, ph))
             draw_detection(image=pred_det_img, sx=px, sy=py, w=pw, h=ph)
 
-        cv2.imwrite("og_image_{}.jpg".format(i), det_img)
+        cv2.imwrite("og_image_{}_{}.jpg".format(i, img_id), det_img)
         cv2.imwrite("pred_image_{}.jpg".format(i), pred_det_img)
         input()
 
