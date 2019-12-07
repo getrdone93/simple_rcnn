@@ -12,9 +12,12 @@ from keras.layers import Conv2D
 from keras.layers import MaxPooling2D
 from keras.layers import Flatten
 from keras.layers import Dense
-from datetime import datetime
 from keras.models import load_model
+from keras.layers import Dropout
+from keras import regularizers
+from keras.optimizers import SGD
 import keras.backend as kb
+from datetime import datetime
 
 SMALL_OBJ = 32 ** 2
 IMAGE_IDS_FILE = 'image_ids.txt'
@@ -137,9 +140,35 @@ def example_tensors(image_bboxes):
 #     model.add(Dense(20, activation='softmax'))
 #     return model
 
+#top left small dets model
+# def custom_model(in_shape):
+#     w, h = in_shape
+#     model = Sequential()
+#     model.add(Conv2D(64, (3, 3), activation='relu', input_shape=(w, h, 3)))
+#     model.add(MaxPooling2D((2, 2)))
+
+#     model.add(Conv2D(128, (3, 3), activation='relu', input_shape=(w, h, 3)))
+#     model.add(MaxPooling2D((2, 2)))
+
+#     model.add(Conv2D(128, (3, 3), activation='relu'))
+#     model.add(MaxPooling2D((2, 2)))
+
+#     model.add(Conv2D(256, (3, 3), activation='relu'))
+#     model.add(MaxPooling2D((2, 2)))
+
+#     model.add(Conv2D(512, (3, 3), activation='relu', 
+#                      kernel_regularizer=regularizers.l1(0.01)))
+#     model.add(MaxPooling2D((2, 2)))
+
+#     model.add(Flatten())
+#     model.add(Dense(20, activation='softmax', 
+#                     kernel_regularizer=regularizers.l1(0.01)))
+#     return model
+
 def custom_model(in_shape):
     w, h = in_shape
     model = Sequential()
+    model.add(Dropout(0.4, input_shape=(224, 224, 3)))
     model.add(Conv2D(64, (3, 3), activation='relu', input_shape=(w, h, 3)))
     model.add(MaxPooling2D((2, 2)))
 
@@ -149,15 +178,19 @@ def custom_model(in_shape):
     model.add(Conv2D(128, (3, 3), activation='relu'))
     model.add(MaxPooling2D((2, 2)))
 
-    model.add(Conv2D(256, (3, 3), activation='relu'))
+    model.add(Conv2D(256, (3, 3), activation='relu', 
+                     kernel_regularizer=regularizers.l1(0.01)))
     model.add(MaxPooling2D((2, 2)))
 
-    model.add(Conv2D(512, (3, 3), activation='relu'))
+    model.add(Conv2D(512, (3, 3), activation='relu', 
+                     kernel_regularizer=regularizers.l1(0.01)))
     model.add(MaxPooling2D((2, 2)))
 
     model.add(Flatten())
-    model.add(Dense(20, activation='softmax'))
+    model.add(Dense(20, activation='softmax', 
+                    kernel_regularizer=regularizers.l1(0.01)))
     return model
+
 
 def normalize_bbox(im_w, im_h, bbox):
     x, y, w, h = bbox
@@ -184,6 +217,12 @@ def avg_coordinate_distance(y_true, y_pred):
 def avg_w_h_distance(y_true, y_pred):
     return kb.mean(kb.sum(kb.abs(y_true[2:4] - y_pred[2:4])))
 
+def max_coordinate(y_true, y_pred):
+    return kb.max(y_pred[0:2])
+
+def max_w_h(y_true, y_pred):
+    return kb.max(y_pred[2:4])
+
 def train_model(train, test, img_shape, batch_size, epochs):
     tr_xs, tr_ys = train
     tst_xs, tst_ys = test
@@ -202,8 +241,12 @@ def train_model(train, test, img_shape, batch_size, epochs):
     if inp == 'n':
         exit()
 
-    model.compile(optimizer='adam', loss='mean_absolute_error', metrics=[avg_coordinate_distance, 
-                                                                         avg_w_h_distance])
+    #optimizer='adam'
+    model.compile(optimizer=SGD(lr=0.01, momentum=0.8), loss='mean_absolute_error', 
+                  metrics=[avg_coordinate_distance, 
+                           avg_w_h_distance, 
+                           max_coordinate, 
+                           max_w_h])
     model.fit_generator(train_itr, steps_per_epoch=len(train_itr), epochs=epochs)
     model.evaluate_generator(test_itr, steps=len(test_itr), verbose=0)
 
@@ -275,7 +318,9 @@ def images_to_dets(model, images, tensors):
 
     for i in range(len(preds)):
         print(preds[i, :, :])
-        input()
+        inp = input()
+        if inp == 'q':
+            break
 
     for og_img, i in zip(images, range(len(images))):
         _, img_bboxes = og_img
