@@ -228,10 +228,11 @@ def draw_detection(image, sx, sy, w, h, lt=2):
     width = ex - sx
     height = ey - sy
     color = (0, 0, 255)
-    cv2.line(image, (sx, sy), (sx + width, sy), color, lt)
-    cv2.line(image, (sx, sy), (sx, sy + height), color, lt)
-    cv2.line(image, (sx + width, sy), (sx + width, sy + height), color, lt)
-    cv2.line(image, (sx, sy + height), (sx + width, sy + height), color, lt)
+    image = cv2.line(image, (sx, sy), (sx + width, sy), color, lt)
+    image = cv2.line(image, (sx, sy), (sx, sy + height), color, lt)
+    image = cv2.line(image, (sx + width, sy), (sx + width, sy + height), color, lt)
+    image = cv2.line(image, (sx, sy + height), (sx + width, sy + height), color, lt)
+    return image
 
 def compare_dets(model, images, tensors): 
     xs, ys = tensors
