@@ -18,7 +18,7 @@ def parse_args():
 
 def crop_resize_region(x, y, w, h, img, res_shape):
    region = np.copy(img[x:x+h, y:y+w])
-   region.resize(res_shape)
+   region = cv2.resize(region.astype('float32'), res_shape)
    return region
 
 def all_detections(anno_path, images_path, model_path, image_shape, image_ids_file):
@@ -52,7 +52,7 @@ def classify_crop(crop, model):
 def classify_all_crops(images, preds, gts, model):
     classified = []
     for img, p, gt in zip(images, preds, gts):
-        itc = image_to_crops(image=img, preds=p, gts=gt, crop_shape=(224, 224, 3))
+        itc = image_to_crops(image=img, preds=p, gts=gt, crop_shape=(224, 224))
         classified.append({'image': itc['image'],
                            'pred_crops': list(map(lambda t: (classify_crop(crop=t[0][0], model=model), t[0][1], t[1]),
                                              zip(itc['pred_crops'], range(1, len(itc['pred_crops']) + 1)))),
@@ -98,11 +98,18 @@ def draw_dets(image_cc):
                            'pred_crops': image['pred_crops']})
     return image_dets
 
-def write_disk(dets):
+def write_disk(dets, use_gpu):
     out_shape = (448, 448)
     for i, d in enumerate(dets):
-        new_pred_image = cv2.resize(d['pred_image'], (out_shape))
-        new_gt_image = cv2.resize(d['gt_image'], (out_shape))
+        if use_gpu:
+            pred_image = d['pred_image']
+            gt_image = d['gt_image']
+        else:
+            pred_image = cv2.UMat(d['pred_image'].get().astype('f'))
+            gt_image = cv2.UMat(d['gt_image'].get().astype('f'))
+
+        new_pred_image = cv2.resize(pred_image, out_shape)
+        new_gt_image = cv2.resize(gt_image, out_shape)
 
         cv2.imwrite("pred_image_{}.jpg".format(i), new_pred_image)
         cv2.imwrite("gt_image_{}.jpg".format(i), new_gt_image)
@@ -121,6 +128,6 @@ if __name__ == '__main__':
                                         image_ids_file=rp.IMAGE_IDS_FILE)
     image_cc = classify_all_crops(images=images, preds=preds, gts=gts, model=VGG16())
     im_dets = draw_dets(image_cc=image_cc)
-    write_disk(dets=im_dets)
+    write_disk(dets=im_dets, use_gpu=args.use_gpu)
 
     
