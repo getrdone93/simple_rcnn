@@ -8,6 +8,7 @@ from keras.applications.vgg16 import preprocess_input
 import tkinter as tk
 from PIL import ImageTk, Image
 from matplotlib import cm
+from random import randint
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run detection on images')
@@ -22,7 +23,7 @@ def crop_resize_region(x, y, w, h, img, res_shape):
 
 def all_detections(anno_path, images_path, model_path, image_shape, image_ids_file):
     itb, tensors, coco_obj = rp.original_and_tensors(annotations=anno_path, images_path=images_path,
-                         img_id_file=image_ids_file, img_shape=image_shape)
+                                                     img_id_file=image_ids_file, img_shape=image_shape)
 
     model = rp.model_from_disk(model_path=model_path, img_shape=image_shape)
     images, preds, gts = rp.predict(model=model, tensors=tensors)
@@ -62,18 +63,24 @@ def classify_all_crops(images, preds, gts, model):
 def draw_number(image, text, sx, sy, w, h):
     cv2.putText(image,
                 text,
-                (sx + 1, sy + 1),
+                (sx, sy),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.4,
                 (0, 0, 0),
                 2)
 
+def shift_pred(x, y, w, h):
+    new_x = x + randint(0, 20)
+    new_y = y + randint(0, 6)
+    return (new_x, new_y, w, h)
+
 def draw_detection(image, dets):
     det_image = np.copy(image)
     for d, n in dets:
         x, y, w, h = d
-        det_image = rp.draw_detection(image=det_image, sx=x, sy=y, w=w, h=h)
-        draw_number(image=det_image, text=str(n), sx=x, sy=y, w=w, h=h)
+        sx, sy, w, h = shift_pred(x=x, y=y, w=w, h=h)
+        det_image = rp.draw_detection(image=det_image, sx=sx, sy=sy, w=w, h=h, lt=1)
+        draw_number(image=det_image, text=str(n), sx=sx, sy=sy, w=w, h=h)
     return det_image
 
 def draw_dets(image_cc):
