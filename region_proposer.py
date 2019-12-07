@@ -141,34 +141,9 @@ def example_tensors(image_bboxes):
 #     return model
 
 #top left small dets model
-# def custom_model(in_shape):
-#     w, h = in_shape
-#     model = Sequential()
-#     model.add(Conv2D(64, (3, 3), activation='relu', input_shape=(w, h, 3)))
-#     model.add(MaxPooling2D((2, 2)))
-
-#     model.add(Conv2D(128, (3, 3), activation='relu', input_shape=(w, h, 3)))
-#     model.add(MaxPooling2D((2, 2)))
-
-#     model.add(Conv2D(128, (3, 3), activation='relu'))
-#     model.add(MaxPooling2D((2, 2)))
-
-#     model.add(Conv2D(256, (3, 3), activation='relu'))
-#     model.add(MaxPooling2D((2, 2)))
-
-#     model.add(Conv2D(512, (3, 3), activation='relu', 
-#                      kernel_regularizer=regularizers.l1(0.01)))
-#     model.add(MaxPooling2D((2, 2)))
-
-#     model.add(Flatten())
-#     model.add(Dense(20, activation='softmax', 
-#                     kernel_regularizer=regularizers.l1(0.01)))
-#     return model
-
 def custom_model(in_shape):
     w, h = in_shape
     model = Sequential()
-    model.add(Dropout(0.4, input_shape=(224, 224, 3)))
     model.add(Conv2D(64, (3, 3), activation='relu', input_shape=(w, h, 3)))
     model.add(MaxPooling2D((2, 2)))
 
@@ -178,8 +153,7 @@ def custom_model(in_shape):
     model.add(Conv2D(128, (3, 3), activation='relu'))
     model.add(MaxPooling2D((2, 2)))
 
-    model.add(Conv2D(256, (3, 3), activation='relu', 
-                     kernel_regularizer=regularizers.l1(0.01)))
+    model.add(Conv2D(256, (3, 3), activation='relu'))
     model.add(MaxPooling2D((2, 2)))
 
     model.add(Conv2D(512, (3, 3), activation='relu', 
@@ -190,7 +164,6 @@ def custom_model(in_shape):
     model.add(Dense(20, activation='softmax', 
                     kernel_regularizer=regularizers.l1(0.01)))
     return model
-
 
 def normalize_bbox(im_w, im_h, bbox):
     x, y, w, h = bbox
@@ -236,12 +209,6 @@ def train_model(train, test, img_shape, batch_size, epochs):
 
     model = custom_model(in_shape=img_shape)
     print(model.summary())
-    print("Do you want this model? ")
-    inp = input()
-    if inp == 'n':
-        exit()
-
-    #optimizer='adam'
     model.compile(optimizer=SGD(lr=0.01, momentum=0.8), loss='mean_absolute_error', 
                   metrics=[avg_coordinate_distance, 
                            avg_w_h_distance, 
@@ -306,7 +273,7 @@ def draw_detection(image, sx, sy, w, h, lt=2):
     cv2.line(image, (sx + width, sy), (sx + width, sy + height), color, lt)
     cv2.line(image, (sx, sy + height), (sx + width, sy + height), color, lt)
 
-def images_to_dets(model, images, tensors): 
+def compare_dets(model, images, tensors): 
     xs, ys = tensors
     preds = model.predict(xs)
 
@@ -343,18 +310,11 @@ def images_to_dets(model, images, tensors):
         cv2.imwrite("pred_image_{}.jpg".format(i), pred_det_img)
         input()
 
-    #print("prediction output: {}".format(out.shape))
-    # for i in range(10):
-    #     cv2.imwrite("image_{}.jpg".format(i), images[i][1])
-    #     cv2.imwrite("tensor_equivalent_{}.jpg".format(i), xs[i])
-    #     input()
-
-
 def prediction_runtime(annotations, images_path, img_id_file, img_shape, model_path):
     images, tensors = original_and_tensors(annotations=annotations, images_path=images_path, 
                                              img_id_file=img_id_file, img_shape=img_shape)
     model = model_from_disk(model_path=model_path, img_shape=img_shape)
-    images_to_dets(model=model, images=images, tensors=tensors)
+    compare_dets(model=model, images=images, tensors=tensors)
 
     
 if __name__ == '__main__':
