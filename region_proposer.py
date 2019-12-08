@@ -4,7 +4,6 @@ import argparse
 import cv2
 import numpy as np
 from pycocotools.coco import COCO
-import cv2
 import os.path as path
 from keras.preprocessing.image import ImageDataGenerator
 from keras.models import Sequential
