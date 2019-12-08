@@ -5,12 +5,10 @@ import cv2
 from keras.applications.vgg16 import VGG16
 from keras.applications.vgg16 import decode_predictions
 from keras.applications.vgg16 import preprocess_input
-import tkinter as tk
-from PIL import ImageTk, Image
-from matplotlib import cm
 from random import randint
 import pickle
 import os.path as path
+from functools import reduce
 
 PRED_EXAMPLE_TO_EXP = {1: "The low image intensities and high smoothing factor\nmust have an effect on the classifier. The region proposer predicts boxes at\nthe upper left and is not close to the ground truth. This may be due to overfitting.",
                   2: "The high intensities of the image might contribute to\nthe classifier thinking nematode. The region proposer predicts boxes at the upper\nleft and is not close to ground truth. The classifier might not do well\nwith upscaled region crops.",
@@ -24,28 +22,6 @@ def crop_resize_region(x, y, w, h, img, res_shape):
    region = np.copy(img[x:x+h, y:y+w])
    region = cv2.resize(region.astype('float32'), res_shape)
    return region
-
-def all_detections(anno_path, images_path, model_path, image_shape, image_ids_file):
-    """Use this to get all of the data structures required for the demo. Then
-       use write_out_structures to write them out to disk.
-    """
-    itb, tensors, coco_obj = rp.original_and_tensors(annotations=anno_path, images_path=images_path,
-                                                     img_id_file=image_ids_file, img_shape=image_shape)
-
-    model = rp.model_from_disk(model_path=model_path, img_shape=image_shape)
-    images, preds, gts = rp.predict(model=model, tensors=tensors)
-    preds = np.rint(preds).astype(int).tolist()
-    gts = np.rint(gts).astype(int).tolist()
-    images = list(map(lambda i: np.asarray(i), images.tolist()))
-    return images, preds, gts
-
-def write_out_structures(images, preds, gts):
-    files = [('./demo_data/images.dat', images), ('./demo_data/preds.dat', preds),
-               ('./demo_data/gts.dat', gts)]
-    for f, dat in files:
-        print("writing {} file".format(f))
-        with open(f, 'ab') as dat_file:
-            pickle.dump(dat, dat_file)
 
 def image_to_crops(image, preds, gts, crop_shape):
     return {'image': image,
@@ -113,22 +89,26 @@ def draw_dets(image_cc):
                            'pred_crops': image['pred_crops']})
     return image_dets
 
-def output_descriptions(window_name, det, ex):
+def output_descriptions(window_name, det, ex, crop_key, cats):
     num_stars = 90
     print("\n")
     print("*" * num_stars)
     print("Description for window {}:".format(window_name))
     print("\nInput/Output explanation: {}\n".format(ex))
-    for crop_class, coord, num in det['pred_crops']:
-        print("box_number: {}".format(num))
+    for ce, gt_c in zip(det[crop_key], cats):
+        crop_class, coord, num = ce
+        if crop_key == 'gt_crops':
+            print("box_number: %-2d ground truth class: %-20s" % (num, gt_c))
+        else:
+            print("box_number: {}".format(num))
         for _, cn, conf in crop_class:
             print("\tpredicted class: %-20s confidence pct: %-.2f%%"
                   % (str(cn), conf * 100))
     print("*" * num_stars, '\n')
 
-def show_output(dets, use_gpu):
+def show_output(dets, use_gpu, cats):
     out_shape = (448, 448)
-    for i, d in zip(range(1, len(dets) + 1), dets):
+    for i, d, cs in zip(range(1, len(dets) + 1), dets, cats):
         if use_gpu:
             pred_image = d['pred_image']
             gt_image = d['gt_image']
@@ -146,8 +126,10 @@ def show_output(dets, use_gpu):
         gt_window_name = "groundtruth_boxes_VGG_16_example_{}".format(i)
         cv2.imshow(pred_window_name, new_pred_image)
         cv2.imshow(gt_window_name, new_gt_image)
-        output_descriptions(window_name=pred_window_name, det=d, ex=PRED_EXAMPLE_TO_EXP[i])
-        output_descriptions(window_name=gt_window_name, det=d, ex=GT_EXAMPLE_TO_EXP[i])
+        output_descriptions(window_name=pred_window_name, crop_key='pred_crops',
+                            det=d, ex=PRED_EXAMPLE_TO_EXP[i], cats=cs)
+        output_descriptions(window_name=gt_window_name, det=d, crop_key='gt_crops',
+                            ex=GT_EXAMPLE_TO_EXP[i], cats=cs)
     cv2.waitKey(0)
 
 def parse_args():
@@ -159,13 +141,36 @@ def parse_args():
 
     return parser.parse_args()
 
+def all_detections(anno_path, images_path, model_path, image_shape, image_ids_file):
+    """Use this to get all of the data structures required for the demo. Then
+       use write_out_structures to write them out to disk.
+    """
+    itb, tensors, coco_obj = rp.original_and_tensors_and_cats(annotations=anno_path,
+                                                              images_path=images_path,
+                                                              img_id_file=image_ids_file,
+                                                              img_shape=image_shape)
+    cats = list(map(lambda t: list(map(lambda bc: bc[1], t[1][1])), itb))
+    model = rp.model_from_disk(model_path=model_path, img_shape=image_shape)
+    images, preds, gts = rp.predict(model=model, tensors=tensors)
+    preds = np.rint(preds).astype(int).tolist()
+    gts = np.rint(gts).astype(int).tolist()
+    images = list(map(lambda i: np.asarray(i), images.tolist()))
+    return images, preds, gts, cats
+
+def write_out_structures(images, preds, gts, cats):
+    files = (('./demo_data/images.dat', images), ('./demo_data/preds.dat', preds),
+               ('./demo_data/gts.dat', gts), ('./demo_data/cats.dat', cats))
+    for f, dat in files:
+        print("writing {} file".format(f))
+        with open(f, 'ab') as dat_file:
+            pickle.dump(dat, dat_file)
+
 if __name__ == '__main__':
     args = parse_args()
     rp.hardware_setup(args.use_gpu)
-
-    images, preds, gts = list(map(lambda f: pickle.load(open(path.join(args.data_path, f), 'rb')),
-                                  ['images.dat', 'preds.dat', 'gts.dat']))
+    images, preds, gts, cats = list(map(lambda f: pickle.load(open(path.join(args.data_path, f), 'rb')),
+                                  ['images.dat', 'preds.dat', 'gts.dat', 'cats.dat']))
     image_cc = classify_all_crops(images=images, preds=preds, gts=gts, model=VGG16())
     im_dets = draw_dets(image_cc=image_cc)
-    show_output(dets=im_dets, use_gpu=args.use_gpu)
+    show_output(dets=im_dets, use_gpu=args.use_gpu, cats=cats)
 

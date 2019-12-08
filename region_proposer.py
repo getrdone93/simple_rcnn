@@ -76,6 +76,20 @@ def image_to_bboxes(images, coco_obj, target_area):
         
     return list(result.items()), bad_ids
 
+def image_to_bboxes_and_cats(images, coco_obj, target_area):
+    result, bad_ids = {}, []
+    for img_id, img_data in images:
+        bboxes = list(map(lambda a: (a['bbox'], coco_obj.cats[a['category_id']]['name']),
+                         filter(lambda an: an['area'] < target_area,
+                            map(lambda a: coco_obj.anns[a],
+                                coco_obj.getAnnIds(imgIds=[img_id])))))
+        if len(bboxes) == 5:
+            result[img_id] = (img_data, bboxes)
+        else:
+            bad_ids.append(img_id)
+
+    return list(result.items()), bad_ids
+
 def scale_bbox(bbox, orig_shape, to_shape):
     oh, ow, _ = orig_shape
     th, tw = to_shape
@@ -212,6 +226,15 @@ def original_and_tensors(annotations, images_path, img_id_file, img_shape):
     images = read_images(image_path=images_path, img_id_file=img_id_file, 
                                    coco_images=val.imgs)
     itb, _ = image_to_bboxes(images=images, coco_obj=val, target_area=SMALL_OBJ)
+    xs, ys = tensors_from_images(images=images, coco_obj=val)
+
+    return itb, (xs, ys), val
+
+def original_and_tensors_and_cats(annotations, images_path, img_id_file, img_shape):
+    val = COCO(annotations)
+    images = read_images(image_path=images_path, img_id_file=img_id_file,
+                                   coco_images=val.imgs)
+    itb, _ = image_to_bboxes_and_cats(images=images, coco_obj=val, target_area=SMALL_OBJ)
     xs, ys = tensors_from_images(images=images, coco_obj=val)
 
     return itb, (xs, ys), val
