@@ -9,6 +9,8 @@ import tkinter as tk
 from PIL import ImageTk, Image
 from matplotlib import cm
 from random import randint
+import pickle
+import os.path as path
 
 PRED_EXAMPLE_TO_EXP = {1: "The low image intensities and high smoothing factor\nmust have an effect on the classifier. The region proposer predicts boxes at\nthe upper left and is not close to the ground truth. This may be due to overfitting.",
                   2: "The high intensities of the image might contribute to\nthe classifier thinking nematode. The region proposer predicts boxes at the upper\nleft and is not close to ground truth. The classifier might not do well\nwith upscaled region crops.",
@@ -18,18 +20,15 @@ GT_EXAMPLE_TO_EXP = {1: "The ground truth boxes are different from the\npredicte
                      2: "Again, the ground truth boxes are different from the\npredicted boxes. They also do not produce a different class score.",
                      3: "This example is interesting because I figured the\nclassifier would be able to decipher a mouse or keyboard. The\nclassifier, however, seems to be thrown off by the upscaled regions."}
 
-def parse_args():
-    parser = argparse.ArgumentParser(description='Run detection on images')
-    parser.add_argument('--use-gpu', required=False, default=False, action='store_true')
-
-    return parser.parse_args()
-
 def crop_resize_region(x, y, w, h, img, res_shape):
    region = np.copy(img[x:x+h, y:y+w])
    region = cv2.resize(region.astype('float32'), res_shape)
    return region
 
 def all_detections(anno_path, images_path, model_path, image_shape, image_ids_file):
+    """Use this to get all of the data structures required for the demo. Then
+       use write_out_structures to write them out to disk.
+    """
     itb, tensors, coco_obj = rp.original_and_tensors(annotations=anno_path, images_path=images_path,
                                                      img_id_file=image_ids_file, img_shape=image_shape)
 
@@ -39,6 +38,14 @@ def all_detections(anno_path, images_path, model_path, image_shape, image_ids_fi
     gts = np.rint(gts).astype(int).tolist()
     images = list(map(lambda i: np.asarray(i), images.tolist()))
     return images, preds, gts
+
+def write_out_structures(images, preds, gts):
+    files = [('./demo_data/images.dat', images), ('./demo_data/preds.dat', preds),
+               ('./demo_data/gts.dat', gts)]
+    for f, dat in files:
+        print("writing {} file".format(f))
+        with open(f, 'ab') as dat_file:
+            pickle.dump(dat, dat_file)
 
 def image_to_crops(image, preds, gts, crop_shape):
     return {'image': image,
@@ -143,20 +150,22 @@ def show_output(dets, use_gpu):
         output_descriptions(window_name=gt_window_name, det=d, ex=GT_EXAMPLE_TO_EXP[i])
     cv2.waitKey(0)
 
+def parse_args():
+    parser = argparse.ArgumentParser(description='Run detection on images')
+    parser.add_argument('--use-gpu', required=False, default=False, action='store_true')
+    parser.add_argument('--annotations', required=False, default='./test_dir/instances_val2014.json')
+    parser.add_argument('--model-path', required=False, default='./trained/5_07-12-19_08h-46m-18s.h5')
+    parser.add_argument('--data-path', required=False, default='./demo_data')
+
+    return parser.parse_args()
+
 if __name__ == '__main__':
     args = parse_args()
     rp.hardware_setup(args.use_gpu)
 
-    anno_path = './test_dir/instances_val2014.json'
-    images_path = './demo_data/'
-    model_path = './trained/5_07-12-19_08h-46m-18s.h5'
-    image_shape = (224, 224)
-
-    images, preds, gts = all_detections(anno_path=anno_path, images_path=images_path, 
-                                        model_path=model_path, image_shape=image_shape, 
-                                        image_ids_file=rp.IMAGE_IDS_FILE)
+    images, preds, gts = list(map(lambda f: pickle.load(open(path.join(args.data_path, f), 'rb')),
+                                  ['images.dat', 'preds.dat', 'gts.dat']))
     image_cc = classify_all_crops(images=images, preds=preds, gts=gts, model=VGG16())
     im_dets = draw_dets(image_cc=image_cc)
     show_output(dets=im_dets, use_gpu=args.use_gpu)
 
-    
