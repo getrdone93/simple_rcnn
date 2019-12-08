@@ -136,7 +136,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Run detection on images')
     parser.add_argument('--use-gpu', required=False, default=False, action='store_true')
     parser.add_argument('--annotations', required=False, default='./test_dir/instances_val2014.json')
-    parser.add_argument('--model-path', required=False, default='./trained/5_07-12-19_08h-46m-18s.h5')
+    parser.add_argument('--model-path', required=False, default='./demo_data/5_07-12-19_08h-46m-18s.h5')
     parser.add_argument('--data-path', required=False, default='./demo_data')
 
     return parser.parse_args()

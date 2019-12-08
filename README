@@ -1,15 +1,28 @@
-To split a new dataset, download the appropriate year and annotations file:
+Programs written by me:
+         - demo.py
+         - region_proposer.py
+         - split_coco.py
+
+demo.py runs the examples for the project. Example run:
+        python3 demo.py
+
+split_coco.py is responsible for splitting a dataset. This file can provide the
+input split for the training portion. A histogram is created where the number of
+objects less than a given area per image serve as the bins. The images with 5 objects
+less than 32 * 32 are chosen for the split. You can adjust the split percentage, but 
+it must in the range (0, 1). Example usage:
+
+     mkdir -p ./data/test
+     mkdir -p ./data/train
+     
+     download the appropriate year and annotations file:
+     http://cocodataset.org/#download
+
+     Run the script:
+     python3 split_coco.py --from-image-path <images_directory> --annotations <annotations_file.json> --to-train-path ./data/train/ --to-test-path ./data/test/ --split-percent .8
+
+region_proposer.py is the neural network responsible for suggesting regions of
+interest to the classification neural network, i.e. VGG16. This network can 
+be trained with a dataset and annotation file.
    
-   http://cocodataset.org/#download
-
-From the project root, make the test and training directories for the resulting split:
    
-   mkdir -p ./data/test
-   mkdir -p ./data/train
-
-Run the script:
-
-    python3 split_coco.py --from-image-path <images_directory> --annotations <annotations_file.json> --to-train-path ./data/train/ --to-test-path ./data/test/ --split-percent .8
-
-You can adjust the split percentage. It must in the range (0, 1).
-      
