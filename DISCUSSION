@@ -1,0 +1,40 @@
+(a) This project uses several dependencies that may have to downloaded on your
+machine. python3 version 3.6.9 was used for all python files so do not use
+python2. All of the dependencies not listed here come with python3 as
+libraries. An Nvidia GPU can be used to make training, prediction, etc. run
+faster. I have an Nvidia RTX-2070, but this should work with any GPU that
+has been appropriately setup with the tensorflow-gpu python package.
+
+         - argparse
+         - numpy (1.17.4)
+         - cv2 (4.1.1)
+         - keras (2.3.1)
+         - tensorflow-gpu (1.14.0) #can also be the cpu version as this code can run on CPU
+         - pycocotools (2.0.0) #pip3 install pycocotools
+
+(b) This project features a neural network that is capable of learning a relationship
+between images and a set of detections or bounding boxes. It does not classify the
+regions as that is done by subsequent portions of the overall network. This neural
+network is called region_proposer. It uses several convolutional layers, max pools,
+and activations to transform the input image into a tensor of detections.
+This project also features a file to split a COCO dataset based on the number of
+objects in images. It creates a histogram where the number of objects in images
+serve as the bins and images are placed into the bins. It then takes all of the images
+in the bin with 5 objects. It splits these images and writes them out into given
+directories.
+This project also features CPU and GPU support for training the neural network and
+running the demo. Simply use the --use-gpu option and it should run faster assuming
+you have a fast GPU. region_proposer training is much faster on a GPU.
+
+(c) I encountered many problems when trying to create a full fledged DCNN. I instead
+decided to create a region proposer that suggests regions of interest to a subsequent
+classification componenet. The region proposer, however, is not accurate and needs
+more refinement. I simply ran out of time to make it better.
+Also, I found it rather difficult to have the region proposer learn classes. This
+would have made things more difficult as the region proposer simply learns a relationship
+between images and a tensor that represents ground truth detections. If classifcation
+were required, then I would need another network output and I would have to sum
+the losses of classification and regression. This would have taken more time and
+it would have required a different data set split. I did not have to worry about
+class when splitting my dataset because region proposer only cares about detections.
+
