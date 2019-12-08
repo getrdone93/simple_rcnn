@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument('--train-images-path', required=False, help='Path to training images')
     parser.add_argument('--test-images-path', required=True, help='Path to testing images')
     parser.add_argument('--annotations', required=True, help='Path to annotations file')
-    parser.add_argument('--epochs', required=False, default=20, type=int)
+    parser.add_argument('--epochs', required=False, default=3, type=int)
     parser.add_argument('--use-gpu', required=False, default=False, action='store_true')
     parser.add_argument('--train', required=False, default=False, action='store_true')
     parser.add_argument('--predict', required=False, default=False, action='store_true')
@@ -267,12 +267,6 @@ def compare_dets(model, images, tensors):
     preds[:, :, 0:4:2] *= w
     preds[:, :, 1:4:2] *= h
 
-    for i in range(len(preds)):
-        print(preds[i, :, :])
-        inp = input()
-        if inp == 'q':
-            break
-
     for og_img, i in zip(images, range(len(images))):
         img_id, img_bboxes = og_img
         oi, bboxes = img_bboxes
@@ -284,14 +278,16 @@ def compare_dets(model, images, tensors):
         pred_img = xs[i]
         pred_bboxes = preds[i].tolist()
         pred_det_img = np.copy(pred_img)
-        print(pred_det_img.shape)
         for pred_bbox in pred_bboxes:
             px, py, pw, ph = map(lambda i: round(i), pred_bbox)
-            print((px, py, pw, ph))
             draw_detection(image=pred_det_img, sx=px, sy=py, w=pw, h=ph)
 
-        cv2.imwrite("og_image_{}_{}.jpg".format(i, img_id), det_img)
-        cv2.imwrite("pred_image_{}.jpg".format(i), pred_det_img)
+        og_image = "original_image_{}_{}.jpg".format(i, img_id)
+        pred_image = "predicted_image_{}_{}.jpg".format(i, img_id)
+        cv2.imwrite(og_image, det_img)
+        cv2.imwrite(pred_image, pred_det_img)
+        print("\nWrote out files, {} and {}. Hit ENTER to see the next images"\
+              .format(og_image, pred_image))
         input()
 
 def prediction_runtime(annotations, images_path, img_id_file, img_shape, model_path):

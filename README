@@ -1,10 +1,25 @@
 Programs written by me:
          - demo.py
-         - region_proposer.py
          - split_coco.py
+         - region_proposer.py
 
-demo.py runs the examples for the project. Example run:
-        python3 demo.py
+demo.py runs the examples for the project. No data splits or training is needed
+for the demo as it uses a model I pretrained on my machine. The VGG-16 classifier
+is used from the keras library and is pretrained on the imagenet dataset. This demo
+runs object recognition on three images and compares the output of my detection system
+to the ground truth locations and classes.
+There are two windows per image. The first window is region_proposer_VGG_16_example_#
+and the second window is groundtruth_boxes_VGG_16_example_#. The first window is the
+output of my detection system. The second window is the ground truth annotations
+with VGG-16 classfying those regions. The console will show output for each of the
+windows respectively. The ground truth classes are shown in the ground truth descriptions.
+Example run:
+
+        To run on CPU:
+           python3 demo.py
+
+        To run on GPU:
+           python3 demo.py --use-gpu
 
 split_coco.py is responsible for splitting a dataset. This file can provide the
 input split for the training portion. A histogram is created where the number of
@@ -12,17 +27,30 @@ objects less than a given area per image serve as the bins. The images with 5 ob
 less than 32 * 32 are chosen for the split. You can adjust the split percentage, but 
 it must in the range (0, 1). Example usage:
 
-     mkdir -p ./data/test
-     mkdir -p ./data/train
-     
-     download the appropriate year and annotations file:
-     http://cocodataset.org/#download
+        mkdir -p ./data/test
+        mkdir -p ./data/train
 
-     Run the script:
-     python3 split_coco.py --from-image-path <images_directory> --annotations <annotations_file.json> --to-train-path ./data/train/ --to-test-path ./data/test/ --split-percent .8
+        download the appropriate year and annotations file:
+          http://cocodataset.org/#download
+
+        Run the script:
+          python3 split_coco.py --from-image-path <images_directory> --annotations <path to annotations_file.json> --to-train-path ./data/train/ --to-test-path ./data/test/ --split-percent .8
 
 region_proposer.py is the neural network responsible for suggesting regions of
-interest to the classification neural network, i.e. VGG16. This network can 
-be trained with a dataset and annotation file.
-   
-   
+interest to the classification neural network, i.e. VGG-16. The region_proposer
+network can be trained with a dataset and annotation file. Example usage:
+
+        To train on the CPU:
+          python3 region_proposer.py --train --train-images-path ./data/train/ --test-images-path ./data/train/ --annotations <path to annotations_file.json>
+
+        To train on the GPU:
+          python3 region_proposer.py --train --train-images-path ./data/train/ --test-images-path ./data/train/ --annotations <path to annotations_file.json> --use-gpu
+
+        The model will be output in the ./trained directory:
+          ls trained
+
+        To run in prediction mode on CPU with a pretrained model:
+           python3 region_proposer.py --predict --pretrained-model trained/<model_name> --annotations <path to annotations_file.json> --test-images-path ./data/test/
+
+        To run in prediction mode on GPU with a pretrained model:
+           python3 region_proposer.py --predict --pretrained-model trained/<model_name> --annotations <path to annotations_file.json> --test-images-path ./data/test/ --use-gpu
