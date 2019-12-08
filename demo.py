@@ -10,6 +10,14 @@ from PIL import ImageTk, Image
 from matplotlib import cm
 from random import randint
 
+PRED_EXAMPLE_TO_EXP = {1: "The low image intensities and high smoothing factor\nmust have an effect on the classifier. The region proposer predicts boxes at\nthe upper left and is not close to the ground truth. This may be due to overfitting.",
+                  2: "The high intensities of the image might contribute to\nthe classifier thinking nematode. The region proposer predicts boxes at the upper\nleft and is not close to ground truth. The classifier might not do well\nwith upscaled region crops.",
+                  3: "The classifier predicts cleaver with low confidence.\nThe region proposer predicts upper left quadrant. Perhaps upscaled regions\nthrow the classifier off."}
+
+GT_EXAMPLE_TO_EXP = {1: "The ground truth boxes are different from the\npredicted boxes. They do not produce a different class because the upscaled\nregions throw off the classifier.",
+                     2: "Again, the ground truth boxes are different from the\npredicted boxes. They also do not produce a different class score.",
+                     3: "This example is interesting because I figured the\nclassifier would be able to decipher a mouse or keyboard. The\nclassifier, however, seems to be thrown off by the upscaled regions."}
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Run detection on images')
     parser.add_argument('--use-gpu', required=False, default=False, action='store_true')
@@ -46,7 +54,7 @@ def image_to_crops(image, preds, gts, crop_shape):
 def classify_crop(crop, model):
     image = np.expand_dims(crop, axis=0)
     prep_image = preprocess_input(image)
-    preds = decode_predictions(model.predict(prep_image), top=10)
+    preds = decode_predictions(model.predict(prep_image), top=3)
     return preds[0] if len(preds) == 1 else preds
 
 def classify_all_crops(images, preds, gts, model):
@@ -66,7 +74,7 @@ def draw_number(image, text, sx, sy, w, h):
                 (sx, sy),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.4,
-                (0, 0, 0),
+                (0, 255, 0),
                 2)
 
 def shift_pred(x, y, w, h):
@@ -74,11 +82,11 @@ def shift_pred(x, y, w, h):
     new_y = y + randint(0, 6)
     return (new_x, new_y, w, h)
 
-def draw_detection(image, dets):
+def draw_detection(image, dets, pred=False):
     det_image = np.copy(image)
     for d, n in dets:
         x, y, w, h = d
-        sx, sy, w, h = shift_pred(x=x, y=y, w=w, h=h)
+        sx, sy, w, h = shift_pred(x=x, y=y, w=w, h=h) if pred else [x, y, w, h]
         det_image = rp.draw_detection(image=det_image, sx=sx, sy=sy, w=w, h=h, lt=1)
         draw_number(image=det_image, text=str(n), sx=sx, sy=sy, w=w, h=h)
     return det_image
@@ -89,7 +97,7 @@ def draw_dets(image_cc):
         image_data = image['image']
         pred_coord = list(map(lambda t: (t[1], t[2]), image['pred_crops']))
         gt_coord = list(map(lambda t: (t[1], t[2]), image['gt_crops']))
-        pred_det_image = draw_detection(image=image_data, dets=pred_coord)
+        pred_det_image = draw_detection(image=image_data, dets=pred_coord, pred=True)
         gt_det_image = draw_detection(image=image_data, dets=gt_coord)
 
         image_dets.append({'pred_image': pred_det_image,
@@ -98,9 +106,22 @@ def draw_dets(image_cc):
                            'pred_crops': image['pred_crops']})
     return image_dets
 
-def write_disk(dets, use_gpu):
+def output_descriptions(window_name, det, ex):
+    num_stars = 90
+    print("\n")
+    print("*" * num_stars)
+    print("Description for window {}:".format(window_name))
+    print("\nInput/Output explanation: {}\n".format(ex))
+    for crop_class, coord, num in det['pred_crops']:
+        print("box_number: {}".format(num))
+        for _, cn, conf in crop_class:
+            print("\tpredicted class: %-20s confidence pct: %-.2f%%"
+                  % (str(cn), conf * 100))
+    print("*" * num_stars, '\n')
+
+def show_output(dets, use_gpu):
     out_shape = (448, 448)
-    for i, d in enumerate(dets):
+    for i, d in zip(range(1, len(dets) + 1), dets):
         if use_gpu:
             pred_image = d['pred_image']
             gt_image = d['gt_image']
@@ -110,9 +131,17 @@ def write_disk(dets, use_gpu):
 
         new_pred_image = cv2.resize(pred_image, out_shape)
         new_gt_image = cv2.resize(gt_image, out_shape)
-
-        cv2.imwrite("pred_image_{}.jpg".format(i), new_pred_image)
-        cv2.imwrite("gt_image_{}.jpg".format(i), new_gt_image)
+        new_pred_image = cv2.normalize(new_pred_image, None, alpha=0, beta=1, 
+                                       norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+        new_gt_image = cv2.normalize(new_gt_image, None, alpha=0, beta=1, 
+                                       norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+        pred_window_name = "region_proposer_VGG_16_example_{}".format(i)
+        gt_window_name = "groundtruth_boxes_VGG_16_example_{}".format(i)
+        cv2.imshow(pred_window_name, new_pred_image)
+        cv2.imshow(gt_window_name, new_gt_image)
+        output_descriptions(window_name=pred_window_name, det=d, ex=PRED_EXAMPLE_TO_EXP[i])
+        output_descriptions(window_name=gt_window_name, det=d, ex=GT_EXAMPLE_TO_EXP[i])
+    cv2.waitKey(0)
 
 if __name__ == '__main__':
     args = parse_args()
@@ -128,6 +157,6 @@ if __name__ == '__main__':
                                         image_ids_file=rp.IMAGE_IDS_FILE)
     image_cc = classify_all_crops(images=images, preds=preds, gts=gts, model=VGG16())
     im_dets = draw_dets(image_cc=image_cc)
-    write_disk(dets=im_dets, use_gpu=args.use_gpu)
+    show_output(dets=im_dets, use_gpu=args.use_gpu)
 
     
