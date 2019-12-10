@@ -130,6 +130,7 @@ def show_output(dets, use_gpu, cats):
                             det=d, ex=PRED_EXAMPLE_TO_EXP[i], cats=cs)
         output_descriptions(window_name=gt_window_name, det=d, crop_key='gt_crops',
                             ex=GT_EXAMPLE_TO_EXP[i], cats=cs)
+    print("\n\tClick on one of the windows and hit ENTER to exit the program.\n")
     cv2.waitKey(0)
 
 def parse_args():

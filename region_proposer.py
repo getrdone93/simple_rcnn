@@ -17,6 +17,7 @@ from keras import regularizers
 from keras.optimizers import SGD
 import keras.backend as kb
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 SMALL_OBJ = 32 ** 2
 IMAGE_IDS_FILE = 'image_ids.txt'
@@ -169,6 +170,15 @@ def max_coordinate(y_true, y_pred):
 def max_w_h(y_true, y_pred):
     return kb.max(y_pred[2:4])
 
+def train_graph(history):
+    plt.plot(history.history['loss'])
+    #plt.plot(history.history['val_loss'])
+    plt.title('Model loss')
+    plt.ylabel('Loss')
+    plt.xlabel('Epoch')
+    plt.legend(['Train', 'Test'], loc='upper left')
+    plt.savefig('train.png')
+
 def train_model(train, test, img_shape, batch_size, epochs):
     tr_xs, tr_ys = train
     tst_xs, tst_ys = test
@@ -187,7 +197,8 @@ def train_model(train, test, img_shape, batch_size, epochs):
                            avg_w_h_distance, 
                            max_coordinate, 
                            max_w_h])
-    model.fit_generator(train_itr, steps_per_epoch=len(train_itr), epochs=epochs)
+    history = model.fit_generator(train_itr, steps_per_epoch=len(train_itr), epochs=epochs)
+    train_graph(history=history)
     model.evaluate_generator(test_itr, steps=len(test_itr), verbose=0)
 
     return model
