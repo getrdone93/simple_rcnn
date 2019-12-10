@@ -12,7 +12,8 @@ There are two windows per image. The first window is region_proposer_VGG_16_exam
 and the second window is groundtruth_boxes_VGG_16_example_#. The first window is the
 output of my detection system. The second window is the ground truth annotations
 with VGG-16 classfying those regions. The console will show output for each of the
-windows respectively. The ground truth classes are shown in the ground truth descriptions.
+windows respectively and will appear at the end of the keras output. The ground truth
+classes are shown in the ground truth descriptions.
 Example run:
 
         To run on CPU:
