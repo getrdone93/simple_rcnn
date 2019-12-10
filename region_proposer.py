@@ -134,7 +134,7 @@ def custom_model(in_shape):
     model.add(MaxPooling2D((2, 2)))
 
     model.add(Flatten())
-    model.add(Dense(20, activation='softmax', 
+    model.add(Dense(20, activation='sigmoid', 
                     kernel_regularizer=regularizers.l1(0.01)))
     return model
 
