@@ -13,7 +13,10 @@ and the second window is groundtruth_boxes_VGG_16_example_#. The first window is
 output of my detection system. The second window is the ground truth annotations
 with VGG-16 classfying those regions. The console will show output for each of the
 windows respectively and will appear at the end of the keras output. The ground truth
-classes are shown in the ground truth descriptions.
+The demo ouputs 6 windows total for 3 images. The windows can be grouped easily
+by the name of the window or the object in the window. The console outputs more
+information about each of the window, including the description and the predictions.
+The demo requires no arguments to execute.
 Example run:
 
         To run on CPU:
@@ -55,3 +58,7 @@ network can be trained with a dataset and annotation file. Example usage:
 
         To run in prediction mode on GPU with a pretrained model:
            python3 region_proposer.py --predict --pretrained-model trained/<model_name> --annotations <path to annotations_file.json> --test-images-path ./data/test/ --use-gpu
+
+Directories:
+    - demo_data: This directory contains data for the demo. It should not be modified.
+    - trained: This directory holds output from the training stage. It should only contain .h5 files.

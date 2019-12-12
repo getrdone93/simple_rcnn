@@ -1,4 +1,4 @@
-(a) This project uses several dependencies that may have to downloaded on your
+(a) This project uses several dependencies that may have to be downloaded on your
 machine. python3 version 3.6.9 was used for all python files so do not use
 python2. All of the dependencies not listed here come with python3 as
 libraries. An Nvidia GPU can be used to make training, prediction, etc. run
